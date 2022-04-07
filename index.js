@@ -6,8 +6,9 @@ let octokit;
 
 async function main() {
     try {
-        const orgName = "PipelineTest-VP";
-        const gthubToken = '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';
+        const orgName = "<githubOrgName>";
+        const gthubUsername = "<username>";
+        const gthubToken = '<GITHUB_TOKEN>';
         const dependencyRepoName = "dependency-details";
 
         octokit = new Octokit({ auth: gthubToken });
@@ -40,7 +41,7 @@ async function main() {
             for(let i = 0; i < response.data.length; i++) {
                 const repo = response.data[i];
                 const repoName = repo.name;
-                const repoUrl = `https://vishnuprabhakar7:${gthubToken}@github.com/${repo.full_name}.git`;
+                const repoUrl = `https://${gthubUsername}:${gthubToken}@github.com/${repo.full_name}.git`;
                 await shell.exec(`git clone ${repoUrl}`);
                 
                 if(fs.existsSync(`./${repoName}/package.json`)) {
@@ -89,14 +90,26 @@ async function main() {
         shell.mkdir('-p', 'temp');
         shell.cd('temp');
 
-        const dependencyRepoURL = `https://vishnuprabhakar7:${gthubToken}@github.com/${orgName}/${dependencyRepoName}.git`
+        // get unique node dependencies
+        const uniqueNodeDependencies = nodeDependencies.dependencies.filter((item, pos) => {
+            return nodeDependencies.dependencies.indexOf(item) == pos;
+        });
+        console.log(`uniqueNodeDependencies: ${JSON.stringify(uniqueNodeDependencies)}`);
+
+        // get unique maven dependencies
+        const uniqueMavenDependencies = mavenDependencies.dependencies.filter((item, pos) => {
+            return mavenDependencies.dependencies.indexOf(item) == pos;
+        });
+        console.log(`uniqueMavenDependencies: ${JSON.stringify(uniqueMavenDependencies)}`);
+
+        const dependencyRepoURL = `https://${gthubUsername}:${gthubToken}@github.com/${orgName}/${dependencyRepoName}.git`
         await shell.exec(`git clone ${dependencyRepoURL}`);
 
         await shell.cd(dependencyRepoName);
 
-        fs.writeFileSync(`./node_dependencies.json`, JSON.stringify(nodeDependencies, null, 2));
+        fs.writeFileSync(`./node_dependencies.json`, JSON.stringify(uniqueNodeDependencies, null, 2));
         fs.writeFileSync(`./node_dependencies_with_repo.json`, JSON.stringify(nodeDependenciesWithRepoName, null, 2));
-        fs.writeFileSync(`./maven_dependencies.json`, JSON.stringify(mavenDependencies, null, 2));
+        fs.writeFileSync(`./maven_dependencies.json`, JSON.stringify(uniqueMavenDependencies, null, 2));
         fs.writeFileSync(`./maven_dependencies_with_repo.json`, JSON.stringify(mavenDependenciesWithRepoName, null, 2));
 
         await shell.exec(`git add .`);
@@ -136,6 +149,16 @@ function getNodeRepoDependencies(packageJson) {
             });
         }
     }
+
+    if(packageJson.devDependencies) {
+        for(let key in packageJson.devDependencies) {
+            dependencies.push({
+                name: key,
+                version: packageJson.devDependencies[key]
+            });
+        }
+    }
+    
     return dependencies;
 }
 
@@ -146,14 +169,16 @@ function getMavenRepoDependencies(dependencies) {
             for(let i = 0; i < dependencies.length; i++) {
                 const dependency = dependencies[i];
                 mavenDependencies.push({
-                    name: dependency.$.artifactId,
-                    version: dependency.$.version
+                    groupId: dependency.$.groupId._text,
+                    artifactId: dependency.$.artifactId._text,
+                    version: dependency.$.version._text
                 });
             }
         } else {
             mavenDependencies.push({
-                name: dependencies.dependency.artifactId,
-                version: dependencies.dependency.version
+                groupId: dependencies.dependency.groupId._text,
+                artifactId: dependencies.dependency.artifactId._text,
+                version: dependencies.dependency.version._text
             });
         }
     }
